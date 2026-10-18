@@ -6,8 +6,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/elalwany/c9s/internal/ui"
-	"github.com/elalwany/c9s/internal/control"
+	"github.com/0xael/c9s/internal/ui"
+	"github.com/0xael/c9s/internal/control"
 )
 
 type Model struct {

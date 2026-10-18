@@ -80,6 +80,8 @@ type Snapshot struct {
 	Sessions  []Session
 	Jobs      []Job
 	Daemon    DaemonInfo
+	Stats     StatsCache
+	History   []HistorySession
 	FetchedAt time.Time
 	Error     error
 }
@@ -88,4 +90,54 @@ type TranscriptEntry struct {
 	Type      string          `json:"type"`
 	Timestamp string          `json:"timestamp"`
 	Message   json.RawMessage `json:"message"`
+}
+
+type StatsCache struct {
+	DailyActivity    []DailyActivity
+	DailyModelTokens []DailyModelTokens
+	ModelUsage       map[string]ModelTokens
+	TotalSessions    int
+	TotalMessages    int
+	FirstSessionDate string
+	HourCounts       map[string]int
+}
+
+type DailyActivity struct {
+	Date          string `json:"date"`
+	MessageCount  int    `json:"messageCount"`
+	SessionCount  int    `json:"sessionCount"`
+	ToolCallCount int    `json:"toolCallCount"`
+}
+
+type DailyModelTokens struct {
+	Date          string           `json:"date"`
+	TokensByModel map[string]int64 `json:"tokensByModel"`
+}
+
+type ModelTokens struct {
+	InputTokens              int64 `json:"inputTokens"`
+	OutputTokens             int64 `json:"outputTokens"`
+	CacheReadInputTokens     int64 `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int64 `json:"cacheCreationInputTokens"`
+}
+
+func (m ModelTokens) Total() int64 {
+	return m.InputTokens + m.OutputTokens + m.CacheReadInputTokens + m.CacheCreationInputTokens
+}
+
+type HistoryEntry struct {
+	Display   string `json:"display"`
+	Timestamp int64  `json:"timestamp"`
+	Project   string `json:"project"`
+	SessionID string `json:"sessionId"`
+}
+
+type HistorySession struct {
+	SessionID   string
+	Project     string
+	FirstPrompt string
+	PromptCount int
+	FirstAt     time.Time
+	LastAt      time.Time
+	Prompts     []HistoryEntry
 }

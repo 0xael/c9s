@@ -1,4 +1,4 @@
-module github.com/elalwany/c9s
+module github.com/0xael/c9s
 
 go 1.26.5
 

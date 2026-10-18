@@ -88,9 +88,13 @@ func (p *Poller) doPoll() Snapshot {
 		for i := range snap.Sessions {
 			snap.Sessions[i].Tokens = LoadSessionTokens(p.claudeHome, snap.Sessions[i].SessionID)
 		}
+		snap.Stats, _ = LoadStatsCache(p.claudeHome)
+		snap.History, _ = LoadHistory(p.claudeHome)
 	} else {
 		snap.Jobs = p.lastSnap.Jobs
 		snap.Daemon = p.lastSnap.Daemon
+		snap.Stats = p.lastSnap.Stats
+		snap.History = p.lastSnap.History
 		mergeTokens(snap.Sessions, p.lastSnap.Sessions)
 	}
 
@@ -122,6 +126,8 @@ func poll(claudeHome string) Snapshot {
 	snap.Sessions = sessions
 	snap.Jobs, _ = LoadJobs(claudeHome)
 	snap.Daemon = LoadDaemonInfo(claudeHome)
+	snap.Stats, _ = LoadStatsCache(claudeHome)
+	snap.History, _ = LoadHistory(claudeHome)
 	for i := range snap.Sessions {
 		snap.Sessions[i].Tokens = LoadSessionTokens(claudeHome, snap.Sessions[i].SessionID)
 	}

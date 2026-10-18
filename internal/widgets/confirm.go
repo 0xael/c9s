@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/elalwany/c9s/internal/ui"
+	"github.com/0xael/c9s/internal/ui"
 )
 
 type Confirm struct {
