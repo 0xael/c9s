@@ -141,3 +141,26 @@ type HistorySession struct {
 	LastAt      time.Time
 	Prompts     []HistoryEntry
 }
+
+type CostModelUsage struct {
+	InputTokens              int64   `json:"inputTokens"`
+	OutputTokens             int64   `json:"outputTokens"`
+	ThinkingTokens           int64   `json:"thinkingTokens"`
+	CacheReadInputTokens     int64   `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int64   `json:"cacheCreationInputTokens"`
+	WebSearchRequests        int     `json:"webSearchRequests"`
+	CostUSD                  float64 `json:"costUSD"`
+}
+
+type SessionCost struct {
+	SessionID         string                    `json:"sessionId"`
+	TotalCostUSD      float64                   `json:"totalCostUSD"`
+	TotalAPIDuration  int64                     `json:"totalAPIDuration"`
+	TotalToolDuration int64                     `json:"totalToolDuration"`
+	TotalDuration     int64                     `json:"totalDuration"`
+	TotalLinesAdded   int                       `json:"totalLinesAdded"`
+	TotalLinesRemoved int                       `json:"totalLinesRemoved"`
+	StartTime         int64                     `json:"startTime"`
+	ModelUsage        map[string]CostModelUsage `json:"modelUsage"`
+	Project           string                    `json:"project"`
+}

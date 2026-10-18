@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>c9s — Claude Code Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #1e1e2e;
+    --surface: #313244;
+    --surface2: #45475a;
+    --text: #cdd6f4;
+    --dim: #6c7086;
+    --primary: #00d7ff;
+    --secondary: #87afff;
+    --accent: #ff5faf;
+    --success: #a6e3a1;
+    --warning: #f9e2af;
+    --error: #f38ba8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  h1 { color: var(--primary); font-size: 1.4rem; margin-bottom: 4px; }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--surface2);
+  }
+  .header-right { color: var(--dim); font-size: 0.8rem; }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .card {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--surface2);
+  }
+  .card-label { color: var(--dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card-value { color: var(--primary); font-size: 1.5rem; font-weight: bold; margin-top: 4px; }
+  .card-value.cost { color: var(--success); }
+  .card-value.lines { color: var(--warning); }
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .chart-box {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--surface2);
+  }
+  .chart-box h2 { color: var(--secondary); font-size: 0.85rem; margin-bottom: 12px; }
+  .chart-box canvas { max-height: 260px; }
+  .chart-box.full { grid-column: 1 / -1; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  th {
+    text-align: left;
+    color: var(--secondary);
+    font-weight: 600;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--surface2);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th:hover { color: var(--primary); }
+  th.sorted-asc::after { content: ' ▲'; }
+  th.sorted-desc::after { content: ' ▼'; }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--surface2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+  }
+  tr:hover td { background: var(--surface); }
+  tr.selected td { background: var(--surface2); }
+  .detail-panel {
+    background: var(--surface);
+    border: 1px solid var(--primary);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    display: none;
+  }
+  .detail-panel.open { display: block; }
+  .detail-panel h3 { color: var(--primary); font-size: 0.9rem; margin-bottom: 8px; }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .detail-section { margin-bottom: 12px; }
+  .detail-label { color: var(--dim); font-size: 0.75rem; }
+  .detail-value { color: var(--text); font-size: 0.85rem; }
+  .prompt-list { list-style: none; padding: 0; }
+  .prompt-list li {
+    padding: 4px 0;
+    color: var(--dim);
+    font-size: 0.8rem;
+    border-bottom: 1px solid var(--surface2);
+  }
+  .prompt-list li::before { content: '› '; color: var(--accent); }
+  .model-tag {
+    display: inline-block;
+    background: var(--surface2);
+    color: var(--primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    margin: 2px;
+  }
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .search-bar input {
+    background: var(--surface);
+    border: 1px solid var(--surface2);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    width: 300px;
+  }
+  .search-bar input::placeholder { color: var(--dim); }
+  .search-bar input:focus { outline: none; border-color: var(--primary); }
+  @media (max-width: 900px) {
+    .charts { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>c9s — Claude Code Analytics</h1>
+  <div class="header-right">
+    <span id="refreshStatus">Loading...</span>
+  </div>
+</div>
+
+<div class="cards" id="overviewCards">
+  <div class="card"><div class="card-label">Sessions</div><div class="card-value" id="cardSessions">—</div></div>
+  <div class="card"><div class="card-label">Messages</div><div class="card-value" id="cardMessages">—</div></div>
+  <div class="card"><div class="card-label">Total Cost</div><div class="card-value cost" id="cardCost">—</div></div>
+  <div class="card"><div class="card-label">Total Tokens</div><div class="card-value" id="cardTokens">—</div></div>
+  <div class="card"><div class="card-label">Live Sessions</div><div class="card-value" id="cardLive">—</div></div>
+  <div class="card"><div class="card-label">Lines Changed</div><div class="card-value lines" id="cardLines">—</div></div>
+</div>
+
+<div class="charts">
+  <div class="chart-box">
+    <h2>Token Usage by Model (30d)</h2>
+    <canvas id="tokenChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h2>Cost by Model Over Time</h2>
+    <canvas id="costChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h2>Model Usage Breakdown</h2>
+    <canvas id="modelChart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h2>Activity by Hour</h2>
+    <canvas id="hourChart"></canvas>
+  </div>
+</div>
+
+<div class="chart-box full" style="margin-bottom:24px">
+  <h2>Session History</h2>
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Search projects or prompts...">
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th data-col="projectShort">Project</th>
+        <th data-col="firstPrompt">First Prompt</th>
+        <th data-col="promptCount">Prompts</th>
+        <th data-col="durationMs">Duration</th>
+        <th data-col="costUSD">Cost</th>
+        <th data-col="totalTokens">Tokens</th>
+        <th data-col="lastAt">Last Active</th>
+      </tr>
+    </thead>
+    <tbody id="historyBody"></tbody>
+  </table>
+  <div id="detailPanel" class="detail-panel"></div>
+</div>
+
+<script>
+(function() {
+  const COLORS = ['#00d7ff','#87afff','#ff5faf','#a6e3a1','#f9e2af','#f38ba8','#cba6f7','#fab387'];
+  let charts = {};
+  let historyData = [];
+  let sortCol = 'lastAt';
+  let sortDir = 'desc';
+  let selectedSession = null;
+
+  function fmtNum(n) {
+    if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  function fmtCost(n) { return '$' + n.toFixed(2); }
+
+  function fmtDuration(ms) {
+    if (!ms || ms <= 0) return '—';
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    if (s < 3600) return Math.floor(s/60) + 'm';
+    var h = Math.floor(s/3600);
+    var m = Math.floor((s%3600)/60);
+    return h + 'h ' + m + 'm';
+  }
+
+  function fmtTimeAgo(epochMs) {
+    var diff = Date.now() - epochMs;
+    var mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    return days + 'd ago';
+  }
+
+  function shortModel(name) {
+    return name.replace('claude-', '').replace(/-\d{8}$/, '');
+  }
+
+  async function fetchJSON(path) {
+    var res = await fetch(path);
+    return res.json();
+  }
+
+  async function loadOverview() {
+    var d = await fetchJSON('/api/overview');
+    document.getElementById('cardSessions').textContent = d.totalSessions.toLocaleString();
+    document.getElementById('cardMessages').textContent = d.totalMessages.toLocaleString();
+    document.getElementById('cardCost').textContent = fmtCost(d.totalCostUSD);
+    document.getElementById('cardTokens').textContent = fmtNum(d.totalTokens);
+    document.getElementById('cardLive').textContent = d.liveSessions;
+    document.getElementById('cardLines').textContent = '+' + fmtNum(d.totalLinesAdded) + ' / -' + fmtNum(d.totalLinesRemoved);
+    document.getElementById('refreshStatus').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  }
+
+  async function loadTokenChart() {
+    var data = await fetchJSON('/api/tokens');
+    if (!data || !data.length) return;
+    var labels = data.map(function(d) { return d.date.slice(5); });
+    var modelSet = {};
+    data.forEach(function(d) {
+      if (d.tokensByModel) {
+        Object.keys(d.tokensByModel).forEach(function(m) { modelSet[m] = true; });
+      }
+    });
+    var models = Object.keys(modelSet).sort();
+    var datasets = models.map(function(m, i) {
+      return {
+        label: shortModel(m),
+        data: data.map(function(d) { return d.tokensByModel ? (d.tokensByModel[m] || 0) : 0; }),
+        backgroundColor: COLORS[i % COLORS.length] + '80',
+        borderColor: COLORS[i % COLORS.length],
+        borderWidth: 1,
+        fill: true
+      };
+    });
+    renderChart('tokenChart', 'line', labels, datasets, { stacked: true, yFmt: fmtNum });
+  }
+
+  async function loadCostChart() {
+    var data = await fetchJSON('/api/cost');
+    if (!data.daily || !data.daily.length) return;
+    var labels = data.daily.map(function(d) { return d.date.slice(5); });
+    var models = Object.keys(data.totalByModel).sort();
+    var datasets = models.map(function(m, i) {
+      return {
+        label: shortModel(m),
+        data: data.daily.map(function(d) { return d.costByModel[m] || 0; }),
+        backgroundColor: COLORS[i % COLORS.length] + '80',
+        borderColor: COLORS[i % COLORS.length],
+        borderWidth: 1,
+        fill: true
+      };
+    });
+    renderChart('costChart', 'line', labels, datasets, { stacked: true, yFmt: function(v) { return '$' + v.toFixed(2); } });
+  }
+
+  async function loadModelChart() {
+    var data = await fetchJSON('/api/models');
+    if (!data || !data.length) return;
+    var labels = data.map(function(d) { return shortModel(d.name); });
+    var values = data.map(function(d) { return d.totalTokens; });
+    var costs = data.map(function(d) { return d.costUSD; });
+    if (charts['modelChart']) charts['modelChart'].destroy();
+    charts['modelChart'] = new Chart(document.getElementById('modelChart'), {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: values,
+          backgroundColor: COLORS.slice(0, data.length),
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'right', labels: { color: '#cdd6f4', font: { family: 'monospace', size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                return ctx.label + ': ' + fmtNum(ctx.parsed) + ' tokens ($' + costs[ctx.dataIndex].toFixed(2) + ')';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  async function loadHourChart() {
+    var data = await fetchJSON('/api/hours');
+    if (!data) return;
+    var labels = [];
+    var values = [];
+    for (var h = 0; h < 24; h++) {
+      labels.push(h.toString().padStart(2, '0') + ':00');
+      values.push(data[h.toString()] || 0);
+    }
+    renderChart('hourChart', 'bar', labels, [{
+      label: 'Sessions',
+      data: values,
+      backgroundColor: '#00d7ff80',
+      borderColor: '#00d7ff',
+      borderWidth: 1
+    }], { stacked: false });
+  }
+
+  function renderChart(id, type, labels, datasets, opts) {
+    if (charts[id]) charts[id].destroy();
+    var scaleOpts = {
+      x: { ticks: { color: '#6c7086', font: { family: 'monospace', size: 10 } }, grid: { color: '#31324440' } },
+      y: {
+        stacked: opts.stacked,
+        ticks: {
+          color: '#6c7086',
+          font: { family: 'monospace', size: 10 },
+          callback: opts.yFmt || function(v) { return v; }
+        },
+        grid: { color: '#31324440' }
+      }
+    };
+    if (opts.stacked) scaleOpts.x.stacked = true;
+    charts[id] = new Chart(document.getElementById(id), {
+      type: type,
+      data: { labels: labels, datasets: datasets },
+      options: {
+        responsive: true,
+        interaction: { intersect: false, mode: 'index' },
+        scales: scaleOpts,
+        plugins: {
+          legend: { labels: { color: '#cdd6f4', font: { family: 'monospace', size: 11 } } },
+          tooltip: { titleFont: { family: 'monospace' }, bodyFont: { family: 'monospace' } }
+        },
+        elements: { point: { radius: 0 }, line: { tension: 0.3 } }
+      }
+    });
+  }
+
+  async function loadHistory() {
+    historyData = await fetchJSON('/api/history');
+    if (!historyData) historyData = [];
+    renderHistory();
+  }
+
+  function renderHistory() {
+    var filter = document.getElementById('searchInput').value.toLowerCase();
+    var filtered = historyData.filter(function(h) {
+      if (!filter) return true;
+      return (h.projectShort && h.projectShort.toLowerCase().indexOf(filter) >= 0) ||
+             (h.firstPrompt && h.firstPrompt.toLowerCase().indexOf(filter) >= 0);
+    });
+
+    filtered.sort(function(a, b) {
+      var va = a[sortCol], vb = b[sortCol];
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va < vb) return sortDir === 'asc' ? -1 : 1;
+      if (va > vb) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    var body = document.getElementById('historyBody');
+    body.innerHTML = '';
+    filtered.forEach(function(h) {
+      var tr = document.createElement('tr');
+      if (h.sessionId === selectedSession) tr.className = 'selected';
+      tr.innerHTML =
+        '<td>' + esc(h.projectShort || '—') + '</td>' +
+        '<td>' + esc(trunc(h.firstPrompt || '—', 60)) + '</td>' +
+        '<td>' + h.promptCount + '</td>' +
+        '<td>' + fmtDuration(h.durationMs) + '</td>' +
+        '<td>' + fmtCost(h.costUSD || 0) + '</td>' +
+        '<td>' + fmtNum(h.totalTokens || 0) + '</td>' +
+        '<td>' + fmtTimeAgo(h.lastAt) + '</td>';
+      tr.addEventListener('click', function() { toggleDetail(h); });
+      body.appendChild(tr);
+    });
+  }
+
+  function toggleDetail(h) {
+    var panel = document.getElementById('detailPanel');
+    if (selectedSession === h.sessionId) {
+      selectedSession = null;
+      panel.className = 'detail-panel';
+      panel.innerHTML = '';
+      renderHistory();
+      return;
+    }
+    selectedSession = h.sessionId;
+    renderHistory();
+
+    fetchJSON('/api/session/' + h.sessionId).then(function(detail) {
+      var html = '<h3>' + esc(h.projectShort) + ' — Session Detail</h3><div class="detail-grid"><div>';
+      html += '<div class="detail-section"><div class="detail-label">Session ID</div><div class="detail-value">' + esc(h.sessionId) + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Project</div><div class="detail-value">' + esc(detail.project || h.project || '—') + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Prompts</div><div class="detail-value">' + h.promptCount + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Duration</div><div class="detail-value">' + fmtDuration(h.durationMs) + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Cost</div><div class="detail-value">' + fmtCost(h.costUSD || 0) + '</div></div>';
+      html += '<div class="detail-section"><div class="detail-label">Lines</div><div class="detail-value">+' + (h.linesAdded||0) + ' / -' + (h.linesRemoved||0) + '</div></div>';
+
+      if (h.models && h.models.length) {
+        html += '<div class="detail-section"><div class="detail-label">Models</div><div class="detail-value">';
+        h.models.forEach(function(m) { html += '<span class="model-tag">' + shortModel(m) + '</span>'; });
+        html += '</div></div>';
+      }
+
+      if (detail.cost && detail.cost.modelUsage) {
+        html += '<div class="detail-section"><div class="detail-label">Token Breakdown</div><div class="detail-value">';
+        Object.keys(detail.cost.modelUsage).forEach(function(model) {
+          var mu = detail.cost.modelUsage[model];
+          html += '<div style="margin:4px 0"><span class="model-tag">' + shortModel(model) + '</span> ';
+          html += 'in: ' + fmtNum(mu.inputTokens) + ' out: ' + fmtNum(mu.outputTokens);
+          if (mu.cacheReadInputTokens) html += ' cache-r: ' + fmtNum(mu.cacheReadInputTokens);
+          if (mu.cacheCreationInputTokens) html += ' cache-w: ' + fmtNum(mu.cacheCreationInputTokens);
+          html += ' $' + mu.costUSD.toFixed(4) + '</div>';
+        });
+        html += '</div></div>';
+      }
+
+      html += '</div><div>';
+
+      if (detail.prompts && detail.prompts.length) {
+        html += '<div class="detail-section"><div class="detail-label">Prompts (' + detail.prompts.length + ')</div>';
+        html += '<ul class="prompt-list">';
+        detail.prompts.slice(0, 15).forEach(function(p) {
+          html += '<li>' + esc(trunc(p.display || '—', 80)) + '</li>';
+        });
+        if (detail.prompts.length > 15) html += '<li style="color:var(--dim)">... and ' + (detail.prompts.length - 15) + ' more</li>';
+        html += '</ul></div>';
+      }
+
+      html += '</div></div>';
+      panel.innerHTML = html;
+      panel.className = 'detail-panel open';
+    });
+  }
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function trunc(s, n) {
+    if (!s) return '';
+    return s.length > n ? s.slice(0, n-3) + '...' : s;
+  }
+
+  document.querySelectorAll('th[data-col]').forEach(function(th) {
+    th.addEventListener('click', function() {
+      var col = th.dataset.col;
+      if (sortCol === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortCol = col;
+        sortDir = 'desc';
+      }
+      document.querySelectorAll('th').forEach(function(t) { t.className = ''; });
+      th.className = 'sorted-' + sortDir;
+      renderHistory();
+    });
+  });
+
+  document.getElementById('searchInput').addEventListener('input', renderHistory);
+
+  async function init() {
+    await Promise.all([loadOverview(), loadTokenChart(), loadCostChart(), loadModelChart(), loadHourChart(), loadHistory()]);
+    setInterval(loadOverview, 10000);
+    setInterval(function() { loadTokenChart(); loadCostChart(); loadModelChart(); loadHourChart(); }, 60000);
+    setInterval(loadHistory, 30000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
